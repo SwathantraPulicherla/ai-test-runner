@@ -20,10 +20,13 @@ class AITestRunner:
         self.output_dir = self.repo_path / output_dir
         self.tests_dir = self.repo_path / "tests"
         self.verification_dir = self.tests_dir / "verification_report"
+        self.test_reports_dir = self.tests_dir / "test_reports"
         self.source_dir = self.repo_path / "src"
 
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
+        # Create test reports directory
+        self.test_reports_dir.mkdir(exist_ok=True)
 
     def find_compilable_tests(self):
         """Find test files that have compiles_yes in verification reports"""
@@ -303,6 +306,43 @@ enable_testing()
 
         return test_results
 
+    def generate_test_reports(self, test_results):
+        """Generate individual test reports for each test executable"""
+        print(f"📝 Generating individual test reports in {self.test_reports_dir}...")
+
+        for result in test_results:
+            report_file = self.test_reports_dir / f"{result['name']}_report.txt"
+
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 60 + "\n")
+                f.write(f"TEST REPORT: {result['name']}\n")
+                f.write("=" * 60 + "\n\n")
+
+                f.write("EXECUTION SUMMARY\n")
+                f.write("-" * 20 + "\n")
+                f.write(f"Test Executable: {result['name']}\n")
+                f.write(f"Exit Code: {result['returncode']}\n")
+                f.write(f"Overall Status: {'PASSED' if result['success'] else 'FAILED'}\n")
+                f.write(f"Individual Tests Run: {result['individual_tests']}\n")
+                f.write(f"Individual Tests Passed: {result['individual_passed']}\n")
+                f.write(f"Individual Tests Failed: {result['individual_failed']}\n\n")
+
+                if result['errors']:
+                    f.write("ERRORS\n")
+                    f.write("-" * 10 + "\n")
+                    f.write(f"{result['errors']}\n\n")
+
+                f.write("DETAILED OUTPUT\n")
+                f.write("-" * 20 + "\n")
+                if result['output']:
+                    f.write(result['output'])
+                else:
+                    f.write("(No output captured)\n")
+
+                f.write("\n" + "=" * 60 + "\n")
+
+            print(f"   📄 Generated report: {report_file.name}")
+
     def generate_coverage(self):
         """Generate coverage reports using lcov"""
         print("📊 Generating coverage reports...")
@@ -407,6 +447,9 @@ enable_testing()
 
         # Run tests
         test_results = self.run_tests()
+
+        # Generate individual test reports
+        self.generate_test_reports(test_results)
 
         # Generate coverage
         self.generate_coverage()
