@@ -1,0 +1,2 @@
+@echo off
+python -c "import sys; sys.path.insert(0, r'C:\Users\SwathantraPulicherla\OneDrive - requisimus Holding GmbH\Desktop\AI_tools_project\workspaces\demo\ai-test-runner'); from ai_test_runner.cli import main; main()" %*
