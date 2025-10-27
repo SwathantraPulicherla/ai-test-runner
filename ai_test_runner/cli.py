@@ -26,7 +26,7 @@ class AITestRunner:
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
         # Create test reports directory
-        self.test_reports_dir.mkdir(exist_ok=True)
+        self.test_reports_dir.mkdir(parents=True, exist_ok=True)
 
     def find_compilable_tests(self):
         """Find test files that have compiles_yes in verification reports"""
