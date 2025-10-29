@@ -134,8 +134,8 @@ include_directories(unity/src)
 
         for test_file in test_files:
             test_name = test_file.stem
-            # Include all source files for each test (stubs in test files will be used)
-            source_files = ["src/main.c", "src/temp_sensor.c", "src/temp_converter.c"]
+            # Include all source files EXCEPT main.c for each test (test files provide their own main)
+            source_files = ["src/temp_sensor.c", "src/temp_converter.c"]
             source_args = " ".join(source_files)
             cmake_content += f'''add_executable({test_name} tests/{test_file.name} unity/src/unity.c {source_args})
 add_test(NAME {test_name} COMMAND {test_name})
