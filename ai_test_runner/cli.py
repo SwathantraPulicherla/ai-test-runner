@@ -10,6 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 import glob
+import re
 
 # Import DependencyAnalyzer from ai-c-test-generator
 sys.path.append(str(Path(__file__).parent.parent.parent / "ai-c-test-generator"))
@@ -34,6 +35,26 @@ class AITestRunner:
         self.output_dir.mkdir(exist_ok=True)
         # Create test reports directory
         self.test_reports_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_stubbed_functions_in_test(self, test_file_path: str) -> set:
+        """Detect function stubs in a test file by parsing function definitions"""
+        stubbed_functions = set()
+        try:
+            with open(test_file_path, 'r') as f:
+                content = f.read()
+
+            # Match function definitions like: float raw_to_celsius(int raw) {
+            # This will find both stubs and test functions, but we'll filter later
+            matches = re.findall(r'\b(\w+)\s+\w+\s*\([^)]*\)\s*{', content)
+            stubbed_functions = set(matches)
+
+            # Remove test functions (they start with "test_")
+            stubbed_functions = {func for func in stubbed_functions if not func.startswith('test_')}
+
+        except Exception as e:
+            print(f"Warning: Could not parse stubs from {test_file_path}: {e}")
+
+        return stubbed_functions
 
     def find_compilable_tests(self):
         """Find test files that have compiles_yes in verification reports"""
@@ -122,6 +143,7 @@ class AITestRunner:
           • links src/main.c **only** for test_main.c
           • pulls in exactly the source files required by the module under test
             (via DependencyAnalyzer)
+          • skips real implementations when stubs exist in test files
           • keeps your coverage flags and Windows work-around
         """
         cmake_content = '''cmake_minimum_required(VERSION 3.10)
@@ -159,6 +181,9 @@ set(UNITY_SRC unity/src/unity.c)
                 "${UNITY_SRC}"
             ]
 
+            # ----- detect stubbed functions in this test -------------------
+            stubbed_functions = self.get_stubbed_functions_in_test(test_path)
+
             # ----- special handling for test_main.c ---------------------------
             if module_name == "main":
                 comment = "# Testing main() – include *all* application sources"
@@ -171,7 +196,7 @@ set(UNITY_SRC unity/src/unity.c)
                 ])
             else:
                 # ----- normal module test ----------------------------------------
-                comment = f"# Testing {module_name} – module + direct dependencies"
+                comment = f"# Testing {module_name} – module + deps (stubs override real)"
 
                 # 1. the module itself
                 module_src = f"src/{module_name}.c"
@@ -182,7 +207,15 @@ set(UNITY_SRC unity/src/unity.c)
                 deps = self.analyzer.get_dependencies(module_name)
                 for dep in deps:
                     dep_src = f"src/{dep}.c"
-                    if dep != "main" and Path(dep_src).exists():
+                    # Check if this dependency provides any stubbed functions
+                    should_skip = False
+                    if hasattr(self.analyzer, 'dependency_map'):
+                        for func_name, func_file in self.analyzer.dependency_map.items():
+                            if func_file.endswith(f"{dep}.c") and func_name in stubbed_functions:
+                                should_skip = True
+                                break
+
+                    if not should_skip and Path(dep_src).exists():
                         sources.append(dep_src)
 
             # ----- write the add_executable block -----------------------------
