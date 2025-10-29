@@ -529,10 +529,10 @@ class AITestRunner:
                     if result['errors']:
                         print(f"     Error: {result['errors']}")
 
-        print(f"\nBuild directory: {self.output_dir}")
+        print(f"\nBuild directory: {self.output_dir.relative_to(self.repo_path)}")
         coverage_dir = self.tests_dir / "coverage_reports" / "index.html"
         if coverage_dir.exists():
-            print(f"Coverage report: {coverage_dir}")
+            print(f"Coverage report: {coverage_dir.relative_to(self.repo_path)}")
 
     def find_test_files(self):
         """Find all test files, excluding test_main.c"""
