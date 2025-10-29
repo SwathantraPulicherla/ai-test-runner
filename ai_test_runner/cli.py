@@ -477,6 +477,18 @@ class AITestRunner:
         if coverage_dir.exists():
             print(f"Coverage report: {coverage_dir}")
 
+    def find_test_files(self):
+        """Find all test files, excluding test_main.c"""
+        test_files = []
+        if os.path.exists(os.path.join(self.output_dir, 'tests')):
+            for file in os.listdir(os.path.join(self.output_dir, 'tests')):
+                if file.endswith('.c') and file.startswith('test_'):
+                    # Skip test_main.c as main.c is not unit tested
+                    if file == 'test_main.c':
+                        continue
+                    test_files.append(file)
+        return test_files
+
     def run(self):
         """Main execution flow"""
         print("🚀 AI Test Runner")
