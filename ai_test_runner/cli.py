@@ -412,7 +412,7 @@ class AITestRunner:
         # Clean old coverage files
         coverage_info = self.output_dir / "coverage.info"
         coverage_source_info = self.output_dir / "coverage_source.info"
-        coverage_html_dir = self.output_dir / "coverage_html"
+        coverage_html_dir = self.tests_dir / "coverage_reports"
 
         if coverage_info.exists():
             coverage_info.unlink()
@@ -435,8 +435,9 @@ class AITestRunner:
             )
 
             # Generate HTML report
+            coverage_reports_path = self.tests_dir / "coverage_reports"
             subprocess.run(
-                ["genhtml", "coverage_source.info", "--output-directory", "coverage_html"],
+                ["genhtml", "coverage_source.info", "--output-directory", str(coverage_reports_path)],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
 
@@ -529,7 +530,7 @@ class AITestRunner:
                         print(f"     Error: {result['errors']}")
 
         print(f"\nBuild directory: {self.output_dir}")
-        coverage_dir = self.output_dir / "coverage_html" / "index.html"
+        coverage_dir = self.tests_dir / "coverage_reports" / "index.html"
         if coverage_dir.exists():
             print(f"Coverage report: {coverage_dir}")
 
