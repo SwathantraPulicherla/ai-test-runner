@@ -44,8 +44,8 @@ class AITestRunner:
                 content = f.read()
 
             # Match function definitions like: float raw_to_celsius(int raw) {
-            # This will find both stubs and test functions, but we'll filter later
-            matches = re.findall(r'\b(\w+)\s+\w+\s*\([^)]*\)\s*{', content)
+            # Capture the function name (second word), not the return type
+            matches = re.findall(r'\b\w+\s+(\w+)\s*\([^)]*\)\s*{', content)
             stubbed_functions = set(matches)
 
             # Remove test functions (they start with "test_")
@@ -164,11 +164,11 @@ endif()
 
 # Include directories
 include_directories(src)
-include_directories(unity/src)
+include_directories(${CMAKE_SOURCE_DIR}/unity/src)
 include_directories(tests)
 
 # Unity source
-set(UNITY_SRC unity/src/unity.c)
+set(UNITY_SRC ${CMAKE_SOURCE_DIR}/unity/src/unity.c)
 '''
 
         for test_path in test_files:
@@ -229,7 +229,7 @@ set(UNITY_SRC unity/src/unity.c)
         # ------------------------------------------------------------------
         cmake_content += "enable_testing()\n"
 
-        cmake_file = self.output_dir / "CMakeLists.txt"
+        cmake_file = self.repo_path / "CMakeLists.txt"
         cmake_file.write_text(cmake_content)
         print(f"Created CMakeLists.txt with {len(test_files)} test targets")
 
