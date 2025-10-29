@@ -229,7 +229,7 @@ set(UNITY_SRC ${CMAKE_SOURCE_DIR}/unity/src/unity.c)
         # ------------------------------------------------------------------
         cmake_content += "enable_testing()\n"
 
-        cmake_file = self.repo_path / "CMakeLists.txt"
+        cmake_file = self.output_dir / "CMakeLists.txt"
         cmake_file.write_text(cmake_content)
         print(f"Created CMakeLists.txt with {len(test_files)} test targets")
 
