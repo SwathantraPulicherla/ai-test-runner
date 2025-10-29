@@ -177,7 +177,9 @@ class AITestRunner:
                 test_sources.append(primary_source)
 
 
-            cmake_content += f"add_executable({executable_name} tests/{os.path.basename(test_file)} {' '.join(test_sources)})\n"
+            # Convert backslashes to forward slashes for CMake compatibility
+            test_sources = [src.replace('\\', '/') for src in test_sources]
+            cmake_content += f"add_executable({executable_name} tests/{os.path.basename(test_file).replace('\\', '/')} {' '.join(test_sources)})\n"
             cmake_content += f"target_link_libraries({executable_name} unity)\n\n"
 
         with open(os.path.join(self.output_dir, 'CMakeLists.txt'), 'w') as f:
