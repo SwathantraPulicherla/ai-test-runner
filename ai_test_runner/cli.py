@@ -139,7 +139,8 @@ class AITestRunner:
     def create_cmake_lists(self, test_files):
         cmake_content = "cmake_minimum_required(VERSION 3.10)\n"
         cmake_content += "project(Tests C)\n\n"
-        cmake_content += "set(CMAKE_C_STANDARD 99)\n\n"
+        cmake_content += "set(CMAKE_C_STANDARD 99)\n"
+        cmake_content += "add_definitions(-DUNIT_TEST)\n\n"
         cmake_content += "include_directories(unity/src)\n"
         cmake_content += "include_directories(src)\n\n"
 
