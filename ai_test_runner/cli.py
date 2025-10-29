@@ -11,6 +11,10 @@ import subprocess
 from pathlib import Path
 import glob
 
+# Import DependencyAnalyzer from ai-c-test-generator
+sys.path.append(str(Path(__file__).parent.parent.parent / "ai-c-test-generator"))
+from ai_c_test_generator.analyzer import DependencyAnalyzer
+
 
 class AITestRunner:
     """AI Test Runner - Builds, executes, and covers AI-generated tests"""
@@ -22,6 +26,9 @@ class AITestRunner:
         self.verification_dir = self.tests_dir / "verification_report"
         self.test_reports_dir = self.tests_dir / "test_reports"
         self.source_dir = self.repo_path / "src"
+
+        # Initialize dependency analyzer
+        self.analyzer = DependencyAnalyzer(str(self.repo_path))
 
         # Create output directory
         self.output_dir.mkdir(exist_ok=True)
@@ -109,47 +116,89 @@ class AITestRunner:
             print("⚠️  Unity framework not available, tests may not compile")
 
     def create_cmake_lists(self, test_files):
-        """Create CMakeLists.txt for building tests with coverage"""
+        """
+        Generate a CMakeLists.txt that:
+          • never links src/main.c into a normal module test (prevents duplicate main)
+          • links src/main.c **only** for test_main.c
+          • pulls in exactly the source files required by the module under test
+            (via DependencyAnalyzer)
+          • keeps your coverage flags and Windows work-around
+        """
         cmake_content = '''cmake_minimum_required(VERSION 3.10)
-project(AITestRunner)
+project(AITestRunner LANGUAGES C)
 
-# Set C standard
+# C standard
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Add coverage flags
+# Coverage flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
 
-# For MinGW/Windows, ensure console application
+# Windows/MinGW fallback
 if(MINGW)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-subsystem,console -Wl,--allow-multiple-definition")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--allow-multiple-definition")
 endif()
 
 # Include directories
 include_directories(src)
 include_directories(unity/src)
+include_directories(tests)
 
-# Test executables (each test includes relevant source files)
+# Unity source
+set(UNITY_SRC unity/src/unity.c)
 '''
 
-        for test_file in test_files:
-            test_name = test_file.stem
-            # Include all source files EXCEPT main.c for each test (test files provide their own main)
-            source_files = ["src/temp_sensor.c", "src/temp_converter.c"]
-            source_args = " ".join(source_files)
-            cmake_content += f'''add_executable({test_name} tests/{test_file.name} unity/src/unity.c {source_args})
-add_test(NAME {test_name} COMMAND {test_name})
+        for test_path in test_files:
+            test_name   = test_path.stem                     # e.g. test_temp_sensor
+            module_name = test_name.replace("test_", "")    # e.g. temp_sensor  or  main
 
-'''
+            # ----- base files for every target --------------------------------
+            sources = [
+                f"tests/{test_path.name}",
+                "${UNITY_SRC}"
+            ]
 
-        cmake_content += '''
-# Enable testing
-enable_testing()
-'''
+            # ----- special handling for test_main.c ---------------------------
+            if module_name == "main":
+                comment = "# Testing main() – include *all* application sources"
+                sources.extend([
+                    "src/main.c",
+                    "src/temp_sensor.c",
+                    "src/temp_converter.c"
+                    # Add every .c you have – you can also scan the folder:
+                    # for p in Path("src").glob("*.c"): sources.append(str(p))
+                ])
+            else:
+                # ----- normal module test ----------------------------------------
+                comment = f"# Testing {module_name} – module + direct dependencies"
+
+                # 1. the module itself
+                module_src = f"src/{module_name}.c"
+                if Path(module_src).exists():
+                    sources.append(module_src)
+
+                # 2. dependencies discovered by the analyzer
+                deps = self.analyzer.get_dependencies(module_name)
+                for dep in deps:
+                    dep_src = f"src/{dep}.c"
+                    if dep != "main" and Path(dep_src).exists():
+                        sources.append(dep_src)
+
+            # ----- write the add_executable block -----------------------------
+            cmake_content += f"{comment}\n"
+            cmake_content += f"add_executable({test_name}\n"
+            for src in sources:
+                cmake_content += f"    {src}\n"
+            cmake_content += ")\n"
+            cmake_content += f"add_test(NAME {test_name} COMMAND {test_name})\n\n"
+
+        # ------------------------------------------------------------------
+        cmake_content += "enable_testing()\n"
 
         cmake_file = self.output_dir / "CMakeLists.txt"
         cmake_file.write_text(cmake_content)
-        print(f"✅ Created CMakeLists.txt with {len(test_files)} tests")
+        print(f"Created CMakeLists.txt with {len(test_files)} test targets")
 
     def copy_source_files(self):
         """Copy source files to build directory"""
