@@ -430,7 +430,7 @@ class AITestRunner:
 
             # Extract coverage for source files only
             subprocess.run(
-                ["lcov", "--extract", "coverage.info", "*/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+                ["lcov", "--extract", "coverage.info", "src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
 
