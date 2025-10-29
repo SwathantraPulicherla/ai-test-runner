@@ -182,7 +182,7 @@ class AITestRunner:
 
         with open(os.path.join(self.output_dir, 'CMakeLists.txt'), 'w') as f:
             f.write(cmake_content)
-        self.log(f"Created CMakeLists.txt with {len(test_files)} test targets")
+        print(f"Created CMakeLists.txt with {len(test_files)} test targets")
 
     def _find_stubbed_functions(self, test_file_path):
         """Finds function names that are defined as stubs in a test file."""
