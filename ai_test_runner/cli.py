@@ -141,6 +141,9 @@ class AITestRunner:
         cmake_content += "project(Tests C)\n\n"
         cmake_content += "set(CMAKE_C_STANDARD 99)\n"
         cmake_content += "add_definitions(-DUNIT_TEST)\n\n"
+        # Add coverage compilation flags
+        cmake_content += "set(CMAKE_C_FLAGS \"${CMAKE_C_FLAGS} --coverage\")\n"
+        cmake_content += "set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} --coverage\")\n\n"
         cmake_content += "include_directories(unity/src)\n"
         cmake_content += "include_directories(src)\n\n"
 
@@ -365,6 +368,10 @@ class AITestRunner:
         """Generate individual test reports for each test executable"""
         print(f"📝 Generating individual test reports in {self.test_reports_dir}...")
 
+        # Clean old reports
+        for old_report in self.test_reports_dir.glob("*_report.txt"):
+            old_report.unlink()
+
         for result in test_results:
             report_file = self.test_reports_dir / f"{result['name']}_report.txt"
 
@@ -399,48 +406,97 @@ class AITestRunner:
             print(f"   📄 Generated report: {report_file.name}")
 
     def generate_coverage(self):
-        """Generate coverage reports using lcov"""
+        """Generate coverage reports using lcov and print a summary"""
         print("📊 Generating coverage reports...")
+
+        # Clean old coverage files
+        coverage_info = self.output_dir / "coverage.info"
+        coverage_source_info = self.output_dir / "coverage_source.info"
+        coverage_html_dir = self.output_dir / "coverage_html"
+
+        if coverage_info.exists():
+            coverage_info.unlink()
+        if coverage_source_info.exists():
+            coverage_source_info.unlink()
+        if coverage_html_dir.exists():
+            shutil.rmtree(coverage_html_dir)
 
         try:
             # Capture coverage data
-            result = subprocess.run(
+            subprocess.run(
                 ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "unused"],
-                cwd=self.output_dir,
-                capture_output=True,
-                text=True,
-                check=True
+                cwd=self.output_dir, capture_output=True, text=True, check=True
             )
 
             # Extract coverage for source files only
-            result = subprocess.run(
+            subprocess.run(
                 ["lcov", "--extract", "coverage.info", "*/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
-                cwd=self.output_dir,
-                capture_output=True,
-                text=True,
-                check=True
+                cwd=self.output_dir, capture_output=True, text=True, check=True
             )
 
             # Generate HTML report
-            coverage_html_dir = self.output_dir / "coverage_html"
-            result = subprocess.run(
+            subprocess.run(
                 ["genhtml", "coverage_source.info", "--output-directory", "coverage_html"],
-                cwd=self.output_dir,
-                capture_output=True,
-                text=True,
-                check=True
+                cwd=self.output_dir, capture_output=True, text=True, check=True
+            )
+
+            # Generate console summary
+            summary_result = subprocess.run(
+                ["lcov", "--list", "coverage_source.info"],
+                cwd=self.output_dir, capture_output=True, text=True, check=True
             )
 
             print(f"✅ Coverage report generated: {coverage_html_dir}")
+            self.print_coverage_summary(summary_result.stdout)
             return True
 
         except subprocess.CalledProcessError as e:
-            print(f"❌ Coverage generation failed: {e}")
+            print(f"❌ Coverage generation failed: {e.stderr}")
             print("Note: Install lcov for coverage reports: sudo apt-get install lcov")
             return False
         except FileNotFoundError:
             print("❌ lcov not found. Install with: sudo apt-get install lcov")
             return False
+
+    def print_coverage_summary(self, lcov_output):
+        """Parse lcov output and print a summary table"""
+        print("\nCOVERAGE SUMMARY")
+        print("=" * 60)
+        
+        lines = lcov_output.strip().split('\n')
+        
+        total_lines = 0
+        total_lines_hit = 0
+        
+        # Header
+        print(f"{'File':<30} | {'Lines':>10} | {'Coverage':>10}")
+        print("-" * 60)
+
+        for line in lines:
+            if "summary" in line:
+                continue
+            parts = line.split('|')
+            if len(parts) >= 3:
+                try:
+                    file_name = parts[0].strip()
+                    coverage_percent = float(parts[1].strip().split('%')[0])
+                    lines_part = parts[2].strip()
+                    
+                    lines_hit = int(lines_part.split('/')[0])
+                    lines_total = int(lines_part.split('/')[1])
+                    
+                    total_lines += lines_total
+                    total_lines_hit += lines_hit
+                    
+                    print(f"{file_name:<30} | {f'{lines_hit}/{lines_total}':>10} | {f'{coverage_percent:.1f}%':>10}")
+                except (ValueError, IndexError):
+                    continue
+        
+        print("-" * 60)
+        if total_lines > 0:
+            total_coverage = (total_lines_hit / total_lines) * 100
+            print(f"{'Total':<30} | {f'{total_lines_hit}/{total_lines}':>10} | {f'{total_coverage:.1f}%':>10}")
+        print("=" * 60)
 
     def print_summary(self, test_results):
         """Print test execution summary"""
