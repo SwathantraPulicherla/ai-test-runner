@@ -137,101 +137,70 @@ class AITestRunner:
             print("⚠️  Unity framework not available, tests may not compile")
 
     def create_cmake_lists(self, test_files):
-        """
-        Generate a CMakeLists.txt that:
-          • never links src/main.c into a normal module test (prevents duplicate main)
-          • links src/main.c **only** for test_main.c
-          • pulls in exactly the source files required by the module under test
-            (via DependencyAnalyzer)
-          • skips real implementations when stubs exist in test files
-          • keeps your coverage flags and Windows work-around
-        """
-        cmake_content = '''cmake_minimum_required(VERSION 3.10)
-project(AITestRunner LANGUAGES C)
+        cmake_content = "cmake_minimum_required(VERSION 3.10)\n"
+        cmake_content += "project(Tests C)\n\n"
+        cmake_content += "set(CMAKE_C_STANDARD 99)\n\n"
+        cmake_content += "include_directories(unity/src)\n"
+        cmake_content += "include_directories(src)\n\n"
 
-# C standard
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+        # Add Unity source file
+        cmake_content += "add_library(unity unity/src/unity.c)\n\n"
 
-# Coverage flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+        source_files = [f for f in os.listdir(os.path.join(self.output_dir, 'src')) if f.endswith('.c')]
+        
+        for test_file in test_files:
+            test_name = os.path.splitext(os.path.basename(test_file))[0]
+            executable_name = test_name
 
-# Windows/MinGW fallback
-if(MINGW)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--allow-multiple-definition")
-endif()
+            # --- INTELLIGENT SOURCE FILE SELECTION ---
+            # Determine the primary source file being tested (e.g., test_main.c -> main.c)
+            source_under_test = test_name.replace('test_', '') + '.c'
 
-# Include directories
-include_directories(src)
-include_directories(${CMAKE_SOURCE_DIR}/unity/src)
-include_directories(tests)
+            # Find all functions stubbed in the test file
+            stubbed_functions = self._find_stubbed_functions(os.path.join(self.output_dir, 'tests', test_file))
+            
+            # Determine which source files provide the stubbed functions
+            source_files_with_stubs = set()
+            for func in stubbed_functions:
+                for src_file in source_files:
+                    # A simple check, can be improved with more robust parsing
+                    with open(os.path.join(self.output_dir, 'src', src_file), 'r', errors='ignore') as f:
+                        if func in f.read():
+                            source_files_with_stubs.add(src_file)
 
-# Unity source
-set(UNITY_SRC ${CMAKE_SOURCE_DIR}/unity/src/unity.c)
-'''
+            # Link only the necessary source files: all sources MINUS the ones that are stubbed
+            test_sources = [os.path.join('src', s) for s in source_files if s not in source_files_with_stubs]
+            
+            # Always include the source file being tested (unless it's stubbed, which it shouldn't be)
+            primary_source = os.path.join('src', source_under_test)
+            if primary_source not in test_sources and os.path.exists(os.path.join(self.output_dir, 'src', source_under_test)):
+                test_sources.append(primary_source)
 
-        for test_path in test_files:
-            test_name   = test_path.stem                     # e.g. test_temp_sensor
-            module_name = test_name.replace("test_", "")    # e.g. temp_sensor  or  main
 
-            # ----- base files for every target --------------------------------
-            sources = [
-                f"tests/{test_path.name}",
-                "${UNITY_SRC}"
-            ]
+            cmake_content += f"add_executable({executable_name} tests/{test_file} {' '.join(test_sources)})\n"
+            cmake_content += f"target_link_libraries({executable_name} unity)\n\n"
 
-            # ----- detect stubbed functions in this test -------------------
-            stubbed_functions = self.get_stubbed_functions_in_test(test_path)
+        with open(os.path.join(self.output_dir, 'CMakeLists.txt'), 'w') as f:
+            f.write(cmake_content)
+        self.log(f"Created CMakeLists.txt with {len(test_files)} test targets")
 
-            # ----- special handling for test_main.c ---------------------------
-            if module_name == "main":
-                comment = "# Testing main() – include *all* application sources"
-                sources.extend([
-                    "src/main.c",
-                    "src/temp_sensor.c",
-                    "src/temp_converter.c"
-                    # Add every .c you have – you can also scan the folder:
-                    # for p in Path("src").glob("*.c"): sources.append(str(p))
-                ])
-            else:
-                # ----- normal module test ----------------------------------------
-                comment = f"# Testing {module_name} – module + deps (stubs override real)"
-
-                # 1. the module itself
-                module_src = f"src/{module_name}.c"
-                if Path(module_src).exists():
-                    sources.append(module_src)
-
-                # 2. dependencies discovered by the analyzer
-                deps = self.analyzer.get_dependencies(module_name)
-                for dep in deps:
-                    dep_src = f"src/{dep}.c"
-                    # Check if this dependency provides any stubbed functions
-                    should_skip = False
-                    if hasattr(self.analyzer, 'dependency_map'):
-                        for func_name, func_file in self.analyzer.dependency_map.items():
-                            if func_file.endswith(f"{dep}.c") and func_name in stubbed_functions:
-                                should_skip = True
-                                break
-
-                    if not should_skip and Path(dep_src).exists():
-                        sources.append(dep_src)
-
-            # ----- write the add_executable block -----------------------------
-            cmake_content += f"{comment}\n"
-            cmake_content += f"add_executable({test_name}\n"
-            for src in sources:
-                cmake_content += f"    {src}\n"
-            cmake_content += ")\n"
-            cmake_content += f"add_test(NAME {test_name} COMMAND {test_name})\n\n"
-
-        # ------------------------------------------------------------------
-        cmake_content += "enable_testing()\n"
-
-        cmake_file = self.output_dir / "CMakeLists.txt"
-        cmake_file.write_text(cmake_content)
-        print(f"Created CMakeLists.txt with {len(test_files)} test targets")
+    def _find_stubbed_functions(self, test_file_path):
+        """Finds function names that are defined as stubs in a test file."""
+        stubs = set()
+        try:
+            with open(test_file_path, 'r', errors='ignore') as f:
+                content = f.read()
+                # Regex to find function definitions that are not test_ or setUp/tearDown
+                # This matches: word( parameters ){ 
+                # The word before ( is the function name
+                pattern = re.compile(r'(\w+)\s*\([^)]*\)\s*{', re.MULTILINE)
+                for match in pattern.finditer(content):
+                    func_name = match.group(1)
+                    if not func_name.startswith(('test_', 'setUp', 'tearDown', 'main')):
+                        stubs.add(func_name)
+        except FileNotFoundError:
+            pass
+        return stubs
 
     def copy_source_files(self):
         """Copy source files to build directory"""
