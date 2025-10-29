@@ -4,7 +4,7 @@ Compiles, executes, and provides coverage reports for AI-generated C unit tests.
 
 ## Features
 
-- 🔍 **Automatic Test Discovery**: Scans `tests/verification_report/` for `compiles_yes` files
+- 🔍 **Automatic Test Discovery**: Scans `tests/compilation_report/` for `compiles_yes` files
 - 🔨 **CMake Build System**: Sets up proper build environment with coverage flags
 - 🧪 **Test Execution**: Runs all compiled tests and captures results
 - 📊 **Coverage Reports**: Generates LCOV coverage reports with HTML output
@@ -86,7 +86,7 @@ ai-test-runner --verbose
 
 ## How It Works
 
-1. **Discovery Phase**: Scans `tests/verification_report/` for files ending with `compiles_yes.txt`
+1. **Discovery Phase**: Scans `tests/compilation_report/` for files ending with `compiles_yes.txt`
 2. **Setup Phase**: Copies source files, test files, and Unity framework to build directory
 3. **Build Phase**: Creates CMakeLists.txt and builds all tests with coverage flags
 4. **Execution Phase**: Runs all compiled test executables
@@ -106,7 +106,7 @@ your-c-project/
 ├── tests/
 │   ├── test_module1.c      # AI-generated tests
 │   ├── test_module2.c      # AI-generated tests
-│   └── verification_report/
+│   └── compilation_report/
 │       ├── test_module1_compiles_yes.txt
 │       └── test_module2_compiles_yes.txt
 └── unity/                  # Unity framework
@@ -178,7 +178,7 @@ ai-test-runner
 
 ### "No compilable tests found"
 - Run `ai-c-testgen` first to generate tests
-- Check that verification reports exist in `tests/verification_report/`
+- Check that compilation reports exist in `tests/compilation_report/`
 - Ensure reports have `compiles_yes` in the filename
 
 ### "CMake not found"
