@@ -406,7 +406,7 @@ class AITestRunner:
             print(f"   📄 Generated report: {report_file.name}")
 
     def generate_coverage(self):
-        """Generate coverage reports using lcov and print a summary"""
+        """Generate coverage reports using lcov or gcovr (fallback)"""
         print("📊 Generating coverage reports...")
 
         # Clean old coverage files
@@ -435,86 +435,53 @@ class AITestRunner:
                 except Exception:
                     pass  # Ignore cleanup errors
 
+        # Try lcov first, then fallback to gcovr
+        coverage_tool = None
+        lcov_path = None
+        gcovr_path = None
+
         try:
-            # Capture coverage data
-            print("   Running: lcov --capture --directory . --output-file coverage.info")
-            capture_result = subprocess.run(
-                ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "unused"],
-                cwd=self.output_dir, capture_output=True, text=True, check=True
-            )
-            print(f"   lcov capture stdout: {capture_result.stdout}")
-            if capture_result.stderr:
-                print(f"   lcov capture stderr: {capture_result.stderr}")
-            
-            # Check if coverage.info was created and has content
-            if coverage_info.exists():
-                size = coverage_info.stat().st_size
-                print(f"   coverage.info created, size: {size} bytes")
-                if size == 0:
-                    print("   ⚠️  coverage.info is empty - no coverage data captured")
-                    return False
-            else:
-                print("   ⚠️  coverage.info was not created")
-                return False
+            # Try lcov first
+            subprocess.run(["lcov", "--version"], capture_output=True, check=True)
+            coverage_tool = "lcov"
+            print("   Using lcov for coverage generation")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            try:
+                # Try to find gcovr in common locations
+                import site
+                user_site = site.getusersitepackages()
+                scripts_dir = user_site.replace('site-packages', 'Scripts')
 
-            # Extract coverage for source files only (exclude Unity and test files)
-            print("   Running: lcov --extract coverage.info '**/src/*.c' --output-file coverage_source.info")
-            extract_result = subprocess.run(
-                ["lcov", "--extract", "coverage.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
-                cwd=self.output_dir, capture_output=True, text=True, check=True
-            )
-            if extract_result.returncode != 0:
-                print(f"   lcov extract failed: {extract_result.stderr}")
-                # Try to remove Unity from coverage before extracting
-                print("   Attempting to remove Unity from coverage data...")
-                remove_result = subprocess.run(
-                    ["lcov", "--remove", "coverage.info", "**/unity/**", "--output-file", "coverage_no_unity.info"],
-                    cwd=self.output_dir, capture_output=True, text=True
-                )
-                if remove_result.returncode == 0:
-                    # Now extract only source files from the Unity-filtered data
-                    extract_after_remove = subprocess.run(
-                        ["lcov", "--extract", "coverage_no_unity.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
-                        cwd=self.output_dir, capture_output=True, text=True
-                    )
-                    if extract_after_remove.returncode == 0:
-                        print("   Successfully extracted source coverage after Unity removal")
-                    else:
-                        print("   Source extraction failed after Unity removal, using Unity-filtered data...")
-                        shutil.move(self.output_dir / "coverage_no_unity.info", self.output_dir / "coverage_source.info")
+                possible_gcovr_paths = [
+                    "gcovr",  # In PATH
+                    f"{scripts_dir}\\gcovr.exe",  # Windows user Scripts
+                    f"{scripts_dir}\\gcovr",  # Alternative
+                ]
+
+                for path in possible_gcovr_paths:
+                    try:
+                        subprocess.run([path, "--version"], capture_output=True, check=True)
+                        gcovr_path = path
+                        break
+                    except (subprocess.CalledProcessError, FileNotFoundError):
+                        continue
+
+                if gcovr_path:
+                    coverage_tool = "gcovr"
+                    print("   Using gcovr for coverage generation (lcov not available)")
                 else:
-                    print("   Unity removal failed, using full coverage data...")
-                    shutil.copy("coverage.info", "coverage_source.info")
+                    raise FileNotFoundError("gcovr not found")
 
-            # Check if coverage_source.info has content
-            coverage_source_info = self.output_dir / "coverage_source.info"
-            if coverage_source_info.exists():
-                size = coverage_source_info.stat().st_size
-                print(f"   coverage_source.info created, size: {size} bytes")
-                if size == 0:
-                    print("   ⚠️  No source files found in coverage data")
-                    return False
-            else:
-                print("   ⚠️  coverage_source.info was not created")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print("❌ Neither lcov nor gcovr found. Install with: pip install gcovr")
+                print("⚠️  Coverage reports not available - install lcov or gcovr for detailed coverage analysis")
                 return False
 
-            # Generate HTML report
-            coverage_reports_path = self.tests_dir / "coverage_reports"
-            subprocess.run(
-                ["genhtml", "coverage_source.info", "--output-directory", str(coverage_reports_path)],
-                cwd=self.output_dir, capture_output=True, text=True, check=True
-            )
-
-            # Generate console summary
-            summary_result = subprocess.run(
-                ["lcov", "--list", "coverage_source.info"],
-                cwd=self.output_dir, capture_output=True, text=True, check=True
-            )
-
-            print(f"✅ Coverage report generated: {coverage_html_dir}")
-            print(f"   Raw lcov output:\n{summary_result.stdout}")
-            self.print_coverage_summary(summary_result.stdout)
-            return True
+        try:
+            if coverage_tool == "lcov":
+                return self._generate_coverage_lcov()
+            else:
+                return self._generate_coverage_gcovr(gcovr_path)
 
         except subprocess.CalledProcessError as e:
             print(f"❌ Coverage generation failed: {e.stderr}")
@@ -522,10 +489,151 @@ class AITestRunner:
             print("On Windows, coverage reports require lcov or gcovr to be installed.")
             return False
         except FileNotFoundError:
-            print("❌ lcov not found. Install with: sudo apt-get install lcov")
-            print("On Windows: choco install lcov or use gcovr: pip install gcovr")
-            print("⚠️  Coverage reports not available - install lcov for detailed coverage analysis")
+            print("❌ Coverage tool not found.")
+            print("On Windows: pip install gcovr")
+            print("⚠️  Coverage reports not available - install lcov or gcovr for detailed coverage analysis")
             return False
+
+    def _generate_coverage_lcov(self):
+        """Generate coverage reports using lcov"""
+        coverage_info = self.output_dir / "coverage.info"
+        coverage_source_info = self.output_dir / "coverage_source.info"
+        coverage_html_dir = self.tests_dir / "coverage_reports"
+
+        # Capture coverage data
+        print("   Running: lcov --capture --directory . --output-file coverage.info")
+        capture_result = subprocess.run(
+            ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "unused"],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+        print(f"   lcov capture stdout: {capture_result.stdout}")
+        if capture_result.stderr:
+            print(f"   lcov capture stderr: {capture_result.stderr}")
+
+        # Check if coverage.info was created and has content
+        if coverage_info.exists():
+            size = coverage_info.stat().st_size
+            print(f"   coverage.info created, size: {size} bytes")
+            if size == 0:
+                print("   ⚠️  coverage.info is empty - no coverage data captured")
+                return False
+        else:
+            print("   ⚠️  coverage.info was not created")
+            return False
+
+        # Extract coverage for source files only (exclude Unity and test files)
+        print("   Running: lcov --extract coverage.info '**/src/*.c' --output-file coverage_source.info")
+        extract_result = subprocess.run(
+            ["lcov", "--extract", "coverage.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+        if extract_result.returncode != 0:
+            print(f"   lcov extract failed: {extract_result.stderr}")
+            # Try to remove Unity from coverage before extracting
+            print("   Attempting to remove Unity from coverage data...")
+            remove_result = subprocess.run(
+                ["lcov", "--remove", "coverage.info", "**/unity/**", "--output-file", "coverage_no_unity.info"],
+                cwd=self.output_dir, capture_output=True, text=True
+            )
+            if remove_result.returncode == 0:
+                # Now extract only source files from the Unity-filtered data
+                extract_after_remove = subprocess.run(
+                    ["lcov", "--extract", "coverage_no_unity.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+                    cwd=self.output_dir, capture_output=True, text=True
+                )
+                if extract_after_remove.returncode == 0:
+                    print("   Successfully extracted source coverage after Unity removal")
+                else:
+                    print("   Source extraction failed after Unity removal, using Unity-filtered data...")
+                    shutil.move(self.output_dir / "coverage_no_unity.info", self.output_dir / "coverage_source.info")
+            else:
+                print("   Unity removal failed, using full coverage data...")
+                shutil.copy("coverage.info", "coverage_source.info")
+
+        # Check if coverage_source.info has content
+        coverage_source_info = self.output_dir / "coverage_source.info"
+        if coverage_source_info.exists():
+            size = coverage_source_info.stat().st_size
+            print(f"   coverage_source.info created, size: {size} bytes")
+            if size == 0:
+                print("   ⚠️  No source files found in coverage data")
+                return False
+        else:
+            print("   ⚠️  coverage_source.info was not created")
+            return False
+
+        # Generate HTML report
+        coverage_reports_path = self.tests_dir / "coverage_reports"
+        subprocess.run(
+            ["genhtml", "coverage_source.info", "--output-directory", str(coverage_reports_path)],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+
+        # Generate console summary
+        summary_result = subprocess.run(
+            ["lcov", "--list", "coverage_source.info"],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+
+        print(f"✅ Coverage report generated: {coverage_html_dir}")
+        print(f"   Raw lcov output:\n{summary_result.stdout}")
+        self.print_coverage_summary(summary_result.stdout)
+        return True
+
+    def _generate_coverage_gcovr(self, gcovr_path):
+        """Generate coverage reports using gcovr"""
+        coverage_html_dir = self.tests_dir / "coverage_reports"
+
+        # Generate HTML report and console summary with gcovr
+        print(f"   Running: {gcovr_path} --html --html-details --output coverage_reports/index.html --root . --filter src/ --exclude unity/ --exclude src/main.c")
+        gcovr_result = subprocess.run(
+            [gcovr_path, "--html", "--html-details", "--output", str(coverage_html_dir / "index.html"), "--root", ".", "--filter", "src/", "--exclude", "unity/", "--exclude", "src/main.c"],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+
+        # Generate console summary
+        print(f"   Running: {gcovr_path} --root . --filter src/ --exclude unity/ --exclude src/main.c")
+        summary_result = subprocess.run(
+            [gcovr_path, "--root", ".", "--filter", "src/", "--exclude", "unity/", "--exclude", "src/main.c"],
+            cwd=self.output_dir, capture_output=True, text=True, check=True
+        )
+
+        print(f"✅ Coverage report generated: {coverage_html_dir}")
+        print(f"   Raw gcovr output:\n{summary_result.stdout}")
+        self.print_coverage_summary_gcovr(summary_result.stdout)
+        return True
+
+    def print_coverage_summary_gcovr(self, gcovr_output):
+        """Parse gcovr output and print a summary table
+
+        gcovr output format is different from lcov:
+        - Lines: percentage (branches) total
+        - Functions: percentage (branches) total
+        """
+        print("\nCOVERAGE SUMMARY")
+        print("=" * 60)
+        print("Format: File | Lines | Functions | Coverage %")
+        print("-" * 60)
+
+        lines = gcovr_output.strip().split('\n')
+
+        # Skip header lines and parse data
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('TOTAL') and not line.startswith(' ') and not line.startswith('-') and '%' in line:
+                try:
+                    # Parse gcovr format: "file.c lines% (branches) total functions% (branches) total"
+                    parts = line.split()
+                    if len(parts) >= 7:
+                        filename = parts[0]
+                        lines_percent = parts[1].rstrip('%')
+                        functions_percent = parts[4].rstrip('%')
+
+                        print(f"{filename:<30} | {lines_percent:>6}% | {functions_percent:>9}% | {lines_percent:>10}%")
+                except (ValueError, IndexError):
+                    continue
+
+        print("-" * 60)
 
     def print_coverage_summary(self, lcov_output):
         """Parse lcov output and print a summary table
