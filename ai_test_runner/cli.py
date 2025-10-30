@@ -25,7 +25,7 @@ class AITestRunner:
         self.output_dir = self.repo_path / output_dir
         self.tests_dir = self.repo_path / "tests"
         self.verification_dir = self.tests_dir / "compilation_report"
-        self.test_reports_dir = self.tests_dir / "tests_reports"
+        self.test_reports_dir = self.tests_dir / "test_reports"
         self.source_dir = self.repo_path / "src"
 
         # Initialize dependency analyzer
