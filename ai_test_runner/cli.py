@@ -419,20 +419,67 @@ class AITestRunner:
         if coverage_source_info.exists():
             coverage_source_info.unlink()
         if coverage_html_dir.exists():
-            shutil.rmtree(coverage_html_dir)
+            try:
+                shutil.rmtree(coverage_html_dir)
+            except (OSError, PermissionError) as e:
+                print(f"⚠️  Could not remove old coverage reports: {e}")
+                # Try to remove files individually
+                try:
+                    import glob
+                    for pattern in ["*.html", "*.css", "*.png", "*.gcov"]:
+                        for file in coverage_html_dir.glob(f"**/{pattern}"):
+                            try:
+                                file.unlink()
+                            except OSError:
+                                pass
+                except Exception:
+                    pass  # Ignore cleanup errors
 
         try:
             # Capture coverage data
-            subprocess.run(
+            print("   Running: lcov --capture --directory . --output-file coverage.info")
+            capture_result = subprocess.run(
                 ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "unused"],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
+            print(f"   lcov capture stdout: {capture_result.stdout}")
+            if capture_result.stderr:
+                print(f"   lcov capture stderr: {capture_result.stderr}")
+            
+            # Check if coverage.info was created and has content
+            if coverage_info.exists():
+                size = coverage_info.stat().st_size
+                print(f"   coverage.info created, size: {size} bytes")
+                if size == 0:
+                    print("   ⚠️  coverage.info is empty - no coverage data captured")
+                    return False
+            else:
+                print("   ⚠️  coverage.info was not created")
+                return False
 
             # Extract coverage for source files only
-            subprocess.run(
-                ["lcov", "--extract", "coverage.info", "src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+            print("   Running: lcov --extract coverage.info '*/src/*.c'")
+            extract_result = subprocess.run(
+                ["lcov", "--extract", "coverage.info", "*/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
+            if extract_result.returncode != 0:
+                print(f"   lcov extract failed: {extract_result.stderr}")
+                # Try without filtering if extract fails
+                print("   Retrying without source filtering...")
+                shutil.copy("coverage.info", "coverage_source.info")
+
+            # Check if coverage_source.info has content
+            coverage_source_info = self.output_dir / "coverage_source.info"
+            if coverage_source_info.exists():
+                size = coverage_source_info.stat().st_size
+                print(f"   coverage_source.info created, size: {size} bytes")
+                if size == 0:
+                    print("   ⚠️  No source files found in coverage data")
+                    return False
+            else:
+                print("   ⚠️  coverage_source.info was not created")
+                return False
 
             # Generate HTML report
             coverage_reports_path = self.tests_dir / "coverage_reports"
@@ -454,9 +501,12 @@ class AITestRunner:
         except subprocess.CalledProcessError as e:
             print(f"❌ Coverage generation failed: {e.stderr}")
             print("Note: Install lcov for coverage reports: sudo apt-get install lcov")
+            print("On Windows, coverage reports require lcov or gcovr to be installed.")
             return False
         except FileNotFoundError:
             print("❌ lcov not found. Install with: sudo apt-get install lcov")
+            print("On Windows: choco install lcov or use gcovr: pip install gcovr")
+            print("⚠️  Coverage reports not available - install lcov for detailed coverage analysis")
             return False
 
     def print_coverage_summary(self, lcov_output):
