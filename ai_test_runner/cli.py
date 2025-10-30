@@ -457,17 +457,25 @@ class AITestRunner:
                 print("   ⚠️  coverage.info was not created")
                 return False
 
-            # Extract coverage for source files only
-            print("   Running: lcov --extract coverage.info '*/src/*.c'")
+            # Extract coverage for source files only (exclude Unity and test files)
+            print("   Running: lcov --extract coverage.info '*/src/*.c' --output-file coverage_source.info")
             extract_result = subprocess.run(
                 ["lcov", "--extract", "coverage.info", "*/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
             if extract_result.returncode != 0:
                 print(f"   lcov extract failed: {extract_result.stderr}")
-                # Try without filtering if extract fails
-                print("   Retrying without source filtering...")
-                shutil.copy("coverage.info", "coverage_source.info")
+                # Try to remove Unity from coverage before extracting
+                print("   Attempting to remove Unity from coverage data...")
+                remove_result = subprocess.run(
+                    ["lcov", "--remove", "coverage.info", "*/unity/*", "--output-file", "coverage_no_unity.info"],
+                    cwd=self.output_dir, capture_output=True, text=True
+                )
+                if remove_result.returncode == 0:
+                    shutil.move(self.output_dir / "coverage_no_unity.info", self.output_dir / "coverage_source.info")
+                else:
+                    print("   Unity removal failed, using full coverage data...")
+                    shutil.copy("coverage.info", "coverage_source.info")
 
             # Check if coverage_source.info has content
             coverage_source_info = self.output_dir / "coverage_source.info"
@@ -511,9 +519,19 @@ class AITestRunner:
             return False
 
     def print_coverage_summary(self, lcov_output):
-        """Parse lcov output and print a summary table"""
+        """Parse lcov output and print a summary table
+        
+        Coverage Summary Format:
+        - File: Source file path (relative to project root)
+        - Lines: Format is "lines_hit/lines_total" (e.g., "45/50")
+        - Coverage: Percentage of lines executed (e.g., "90.0%")
+        
+        Only application source files are included (Unity testing framework excluded).
+        """
         print("\nCOVERAGE SUMMARY")
         print("=" * 60)
+        print("Format: File | Lines (hit/total) | Coverage %")
+        print("-" * 60)
         
         lines = lcov_output.strip().split('\n')
         
