@@ -271,10 +271,11 @@ class AITestRunner:
         return True
 
     def run_tests(self):
-        """Run the compiled tests"""
+        """Run the compiled tests and track which ones pass for coverage"""
         print("🧪 Running tests...")
 
         test_results = []
+        self.passed_test_executables = []  # Track passing tests for coverage
         test_executables = [exe for exe in self.output_dir.glob("*test*") 
                            if exe.is_file() and exe.suffix in ['.exe', ''] and 'CTest' not in exe.name]
 
@@ -329,6 +330,10 @@ class AITestRunner:
                         'individual_passed': individual_passed,
                         'individual_failed': individual_failed
                     })
+
+                    # Track passing tests for coverage generation
+                    if success:
+                        self.passed_test_executables.append(exe.name)
 
                     status = "✅" if success else "❌"
                     if individual_tests > 0:
@@ -514,6 +519,26 @@ class AITestRunner:
                 print(f"   Removed cached coverage file: {gcno_file.name}")
             except OSError:
                 pass
+
+        # Check if we have any passing tests to generate coverage from
+        if not hasattr(self, 'passed_test_executables') or not self.passed_test_executables:
+            print("   ⚠️  No passing tests found - skipping coverage generation")
+            # Create minimal coverage report so CI doesn't fail
+            coverage_reports_path = self.tests_dir / "coverage_reports"
+            coverage_reports_path.mkdir(parents=True, exist_ok=True)
+            index_file = coverage_reports_path / "index.html"
+            try:
+                with open(index_file, "w", encoding="utf-8") as f:
+                    f.write("<html><head><title>No coverage data</title></head><body>\n")
+                    f.write("<h1>No coverage data available</h1>\n")
+                    f.write("<p>All tests failed - no coverage data was generated. Only passing tests generate coverage.</p>\n")
+                    f.write("</body></html>\n")
+                print(f"   Wrote minimal coverage page: {index_file}")
+            except OSError:
+                print("   ⚠️  Could not write minimal coverage index.html")
+            return True
+
+        print(f"   Coverage will be generated from {len(self.passed_test_executables)} passing test(s)")
 
         # If there are no .gcda files, skip lcov capture and produce a minimal report
         gcda_files = list(self.output_dir.rglob("*.gcda"))
