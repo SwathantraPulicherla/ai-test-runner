@@ -515,6 +515,36 @@ class AITestRunner:
             except OSError:
                 pass
 
+        # If there are no .gcda files, skip lcov capture and produce a minimal report
+        gcda_files = list(self.output_dir.rglob("*.gcda"))
+        if not gcda_files:
+            print("   ⚠️  No .gcda files found - skipping lcov capture and generating minimal coverage report")
+            # Ensure coverage_reports directory exists and contains a small index.html so CI artifacts are created
+            coverage_reports_path = self.tests_dir / "coverage_reports"
+            coverage_reports_path.mkdir(parents=True, exist_ok=True)
+            index_file = coverage_reports_path / "index.html"
+            try:
+                with open(index_file, "w", encoding="utf-8") as f:
+                    f.write("<html><head><title>No coverage data</title></head><body>\n")
+                    f.write("<h1>No coverage data available</h1>\n")
+                    f.write("<p>No .gcda files were found in the build directory — ensure tests are run with coverage instrumentation.</p>\n")
+                    f.write("</body></html>\n")
+                print(f"   Wrote minimal coverage page: {index_file}")
+            except OSError:
+                print("   ⚠️  Could not write minimal coverage index.html")
+
+            # Create an empty coverage_source.info file so downstream steps that expect a file won't fail catastrophically
+            try:
+                coverage_source_info = self.output_dir / "coverage_source.info"
+                with open(coverage_source_info, "w", encoding="utf-8") as f:
+                    f.write("# coverage info: no data captured\n")
+                print(f"   Wrote placeholder coverage info: {coverage_source_info}")
+            except OSError:
+                print("   ⚠️  Could not write placeholder coverage info")
+
+            print("   Skipping detailed coverage generation due to missing instrumentation (.gcda files)")
+            return True
+
         # Capture coverage data
         print("   Running: lcov --capture --directory . --output-file coverage.info")
         capture_result = subprocess.run(
