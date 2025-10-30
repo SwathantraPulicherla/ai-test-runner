@@ -519,30 +519,67 @@ class AITestRunner:
         
         total_lines = 0
         total_lines_hit = 0
+        file_summaries = []
         
-        # Header
+        current_file = None
+        current_lines_hit = 0
+        current_lines_total = 0
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Check for file header (ends with colon)
+            if line.endswith(':') and not line.startswith(' '):
+                # Save previous file data if exists
+                if current_file and current_lines_total > 0:
+                    file_summaries.append({
+                        'file': current_file,
+                        'lines_hit': current_lines_hit,
+                        'lines_total': current_lines_total
+                    })
+                
+                # Start new file
+                current_file = line[:-1]  # Remove colon
+                current_lines_hit = 0
+                current_lines_total = 0
+            
+            # Parse lines data
+            elif line.startswith('  lines......:') and '%' in line:
+                try:
+                    # Format: "  lines......: 90.0% (9 of 10 lines)"
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        percentage_str = parts[1].rstrip('%')
+                        coverage_percent = float(percentage_str)
+                        
+                        # Extract "9 of 10"
+                        of_index = parts.index('of')
+                        if of_index > 0 and of_index < len(parts) - 1:
+                            lines_hit = int(parts[of_index - 1])
+                            lines_total = int(parts[of_index + 1])
+                            
+                            current_lines_hit = lines_hit
+                            current_lines_total = lines_total
+                except (ValueError, IndexError):
+                    pass
+        
+        # Save last file
+        if current_file and current_lines_total > 0:
+            file_summaries.append({
+                'file': current_file,
+                'lines_hit': current_lines_hit,
+                'lines_total': current_lines_total
+            })
+        
+        # Print table
         print(f"{'File':<30} | {'Lines':>10} | {'Coverage':>10}")
         print("-" * 60)
-
-        for line in lines:
-            if "summary" in line:
-                continue
-            parts = line.split('|')
-            if len(parts) >= 3:
-                try:
-                    file_name = parts[0].strip()
-                    coverage_percent = float(parts[1].strip().split('%')[0])
-                    lines_part = parts[2].strip()
-                    
-                    lines_hit = int(lines_part.split('/')[0])
-                    lines_total = int(lines_part.split('/')[1])
-                    
-                    total_lines += lines_total
-                    total_lines_hit += lines_hit
-                    
-                    print(f"{file_name:<30} | {f'{lines_hit}/{lines_total}':>10} | {f'{coverage_percent:.1f}%':>10}")
-                except (ValueError, IndexError):
-                    continue
+        
+        for summary in file_summaries:
+            coverage_percent = (summary['lines_hit'] / summary['lines_total']) * 100 if summary['lines_total'] > 0 else 0
+            print(f"{summary['file']:<30} | {f'{summary['lines_hit']}/{summary['lines_total']}':>10} | {f'{coverage_percent:.1f}%':>10}")
+            total_lines += summary['lines_total']
+            total_lines_hit += summary['lines_hit']
         
         print("-" * 60)
         if total_lines > 0:
