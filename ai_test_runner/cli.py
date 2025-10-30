@@ -495,6 +495,7 @@ class AITestRunner:
             )
 
             print(f"✅ Coverage report generated: {coverage_html_dir}")
+            print(f"   Raw lcov output:\n{summary_result.stdout}")
             self.print_coverage_summary(summary_result.stdout)
             return True
 
