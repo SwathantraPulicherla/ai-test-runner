@@ -458,9 +458,9 @@ class AITestRunner:
                 return False
 
             # Extract coverage for source files only (exclude Unity and test files)
-            print("   Running: lcov --extract coverage.info '*/src/*.c' --output-file coverage_source.info")
+            print("   Running: lcov --extract coverage.info '**/src/*.c' --output-file coverage_source.info")
             extract_result = subprocess.run(
-                ["lcov", "--extract", "coverage.info", "*/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+                ["lcov", "--extract", "coverage.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
                 cwd=self.output_dir, capture_output=True, text=True, check=True
             )
             if extract_result.returncode != 0:
@@ -468,11 +468,20 @@ class AITestRunner:
                 # Try to remove Unity from coverage before extracting
                 print("   Attempting to remove Unity from coverage data...")
                 remove_result = subprocess.run(
-                    ["lcov", "--remove", "coverage.info", "*/unity/*", "--output-file", "coverage_no_unity.info"],
+                    ["lcov", "--remove", "coverage.info", "**/unity/**", "--output-file", "coverage_no_unity.info"],
                     cwd=self.output_dir, capture_output=True, text=True
                 )
                 if remove_result.returncode == 0:
-                    shutil.move(self.output_dir / "coverage_no_unity.info", self.output_dir / "coverage_source.info")
+                    # Now extract only source files from the Unity-filtered data
+                    extract_after_remove = subprocess.run(
+                        ["lcov", "--extract", "coverage_no_unity.info", "**/src/*.c", "--output-file", "coverage_source.info", "--ignore-errors", "unused,empty"],
+                        cwd=self.output_dir, capture_output=True, text=True
+                    )
+                    if extract_after_remove.returncode == 0:
+                        print("   Successfully extracted source coverage after Unity removal")
+                    else:
+                        print("   Source extraction failed after Unity removal, using Unity-filtered data...")
+                        shutil.move(self.output_dir / "coverage_no_unity.info", self.output_dir / "coverage_source.info")
                 else:
                     print("   Unity removal failed, using full coverage data...")
                     shutil.copy("coverage.info", "coverage_source.info")
