@@ -576,10 +576,12 @@ class AITestRunner:
         print("-" * 60)
         
         for summary in file_summaries:
-            coverage_percent = (summary['lines_hit'] / summary['lines_total']) * 100 if summary['lines_total'] > 0 else 0
-            print(f"{summary['file']:<30} | {f'{summary['lines_hit']}/{summary['lines_total']}':>10} | {f'{coverage_percent:.1f}%':>10}")
-            total_lines += summary['lines_total']
-            total_lines_hit += summary['lines_hit']
+            lines_hit = summary['lines_hit']
+            lines_total = summary['lines_total']
+            coverage_percent = (lines_hit / lines_total) * 100 if lines_total > 0 else 0
+            print(f"{summary['file']:<30} | {lines_hit:>5}/{lines_total:<5} | {coverage_percent:>10.1f}%")
+            total_lines += lines_total
+            total_lines_hit += lines_hit
         
         print("-" * 60)
         if total_lines > 0:
