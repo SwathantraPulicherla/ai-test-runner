@@ -576,9 +576,9 @@ class AITestRunner:
             return True
 
         # Capture coverage data
-        print("   Running: lcov --capture --directory . --output-file coverage.info")
+        print("   Running: lcov --capture --directory . --output-file coverage.info --ignore-errors gcov,unused")
         capture_result = subprocess.run(
-            ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "unused"],
+            ["lcov", "--capture", "--directory", ".", "--output-file", "coverage.info", "--ignore-errors", "gcov,unused"],
             cwd=self.output_dir, capture_output=True, text=True, check=True
         )
         print(f"   lcov capture stdout: {capture_result.stdout}")
