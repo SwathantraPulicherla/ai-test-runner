@@ -635,7 +635,7 @@ class AITestRunner:
 
         print(f"✅ Coverage report generated: {coverage_html_dir}")
         print(f"   Raw lcov output:\n{summary_result.stdout}")
-        self.print_coverage_summary(summary_result.stdout)
+        print("   See the full coverage report in the HTML artifact or GitHub Pages.")
         return True
 
     def _generate_coverage_gcovr(self, gcovr_path):
@@ -658,7 +658,7 @@ class AITestRunner:
 
         print(f"✅ Coverage report generated: {coverage_html_dir}")
         print(f"   Raw gcovr output:\n{summary_result.stdout}")
-        self.print_coverage_summary_gcovr(summary_result.stdout)
+        print("   See the full coverage report in the HTML artifact or GitHub Pages.")
         return True
 
     def print_coverage_summary_gcovr(self, gcovr_output):
