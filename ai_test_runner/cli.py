@@ -698,10 +698,13 @@ class AITestRunner:
         
         Coverage Summary Format:
         - File: Source file path (relative to project root)
-        - Lines: Format is "lines_hit/lines_total" (e.g., "45/50")
-        - Coverage: Percentage of lines executed (e.g., "90.0%")
+        - Lines: Format is "lines_hit/lines_total" (e.g., "3/6")
+        - Coverage: Percentage of lines executed (e.g., "50.0%")
         
-        Only application source files are included (Unity testing framework excluded).
+        Handles lcov --list table format:
+        Filename                |Rate     Num|Rate    Num|Rate     Num
+        ==============================================================
+        temp_converter.c        |50.0%      6| 0.0%     3|    -      0
         """
         print("\nCOVERAGE SUMMARY")
         print("=" * 60)
@@ -714,55 +717,47 @@ class AITestRunner:
         total_lines_hit = 0
         file_summaries = []
         
-        current_file = None
-        current_lines_hit = 0
-        current_lines_total = 0
-        
+        # Parse lcov table format
+        parsing_table = False
         for line in lines:
             line = line.strip()
             
-            # Check for file header (ends with colon)
-            if line.endswith(':') and not line.startswith(' '):
-                # Save previous file data if exists
-                if current_file and current_lines_total > 0:
-                    file_summaries.append({
-                        'file': current_file,
-                        'lines_hit': current_lines_hit,
-                        'lines_total': current_lines_total
-                    })
-                
-                # Start new file
-                current_file = line[:-1]  # Remove colon
-                current_lines_hit = 0
-                current_lines_total = 0
+            # Skip header and separator lines
+            if '|Lines' in line or '=====' in line or '|Rate' in line:
+                parsing_table = True
+                continue
             
-            # Parse lines data
-            elif line.startswith('  lines......:') and '%' in line:
+            # Parse table rows with format: "filename.c        |50.0%      6| 0.0%     3|    -      0"
+            if parsing_table and '|' in line and '%' in line:
                 try:
-                    # Format: "  lines......: 90.0% (9 of 10 lines)"
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        percentage_str = parts[1].rstrip('%')
-                        coverage_percent = float(percentage_str)
+                    # Split by pipe and parse the lines column (first data column)
+                    parts = line.split('|')
+                    if len(parts) >= 2:
+                        filename = parts[0].strip()
+                        lines_data = parts[1].strip()  # e.g., "50.0%      6"
                         
-                        # Extract "9 of 10"
-                        of_index = parts.index('of')
-                        if of_index > 0 and of_index < len(parts) - 1:
-                            lines_hit = int(parts[of_index - 1])
-                            lines_total = int(parts[of_index + 1])
+                        # Skip Total line, we'll calculate it ourselves
+                        if filename.lower() == 'total' or '=====' in filename:
+                            continue
+                        
+                        # Extract percentage and total lines
+                        data_parts = lines_data.split()
+                        if len(data_parts) >= 2:
+                            coverage_percent = float(data_parts[0].rstrip('%'))
+                            lines_total = int(data_parts[1])
+                            lines_hit = int((coverage_percent / 100.0) * lines_total)
                             
-                            current_lines_hit = lines_hit
-                            current_lines_total = lines_total
-                except (ValueError, IndexError):
-                    pass
-        
-        # Save last file
-        if current_file and current_lines_total > 0:
-            file_summaries.append({
-                'file': current_file,
-                'lines_hit': current_lines_hit,
-                'lines_total': current_lines_total
-            })
+                            file_summaries.append({
+                                'file': filename,
+                                'lines_hit': lines_hit,
+                                'lines_total': lines_total
+                            })
+                            
+                            total_lines += lines_total
+                            total_lines_hit += lines_hit
+                except (ValueError, IndexError) as e:
+                    # Skip lines that don't match expected format
+                    continue
         
         # Print table
         print(f"{'File':<30} | {'Lines':>10} | {'Coverage':>10}")
@@ -773,8 +768,6 @@ class AITestRunner:
             lines_total = summary['lines_total']
             coverage_percent = (lines_hit / lines_total) * 100 if lines_total > 0 else 0
             print(f"{summary['file']:<30} | {lines_hit:>5}/{lines_total:<5} | {coverage_percent:>10.1f}%")
-            total_lines += lines_total
-            total_lines_hit += lines_hit
         
         print("-" * 60)
         if total_lines > 0:
