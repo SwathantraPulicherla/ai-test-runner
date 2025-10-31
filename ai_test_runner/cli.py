@@ -410,9 +410,14 @@ class AITestRunner:
 
             print(f"   📄 Generated report: {report_file.name}")
 
-    def generate_coverage(self):
+    def generate_coverage(self, test_results=None):
         """Generate coverage reports using lcov or gcovr (fallback)"""
         print("📊 Generating coverage reports...")
+
+        # Calculate total individual tests passed if test_results provided
+        total_individual_passed = 0
+        if test_results:
+            total_individual_passed = sum(r.get('individual_passed', 0) for r in test_results)
 
         # Clean old coverage files
         coverage_info = self.output_dir / "coverage.info"
@@ -484,7 +489,7 @@ class AITestRunner:
 
         try:
             if coverage_tool == "lcov":
-                return self._generate_coverage_lcov()
+                return self._generate_coverage_lcov(total_individual_passed)
             else:
                 return self._generate_coverage_gcovr(gcovr_path)
 
@@ -499,7 +504,7 @@ class AITestRunner:
             print("⚠️  Coverage reports not available - install lcov or gcovr for detailed coverage analysis")
             return False
 
-    def _generate_coverage_lcov(self):
+    def _generate_coverage_lcov(self, total_individual_passed=0):
         """Generate coverage reports using lcov"""
         coverage_info = self.output_dir / "coverage.info"
         coverage_source_info = self.output_dir / "coverage_source.info"
@@ -521,7 +526,7 @@ class AITestRunner:
                 pass
 
         # Check if we have any passing tests to generate coverage from
-        if not hasattr(self, 'passed_test_executables') or not self.passed_test_executables:
+        if total_individual_passed == 0:
             print("   ⚠️  No passing tests found - skipping coverage generation")
             # Create minimal coverage report so CI doesn't fail
             coverage_reports_path = self.tests_dir / "coverage_reports"
@@ -869,7 +874,7 @@ class AITestRunner:
         self.generate_test_reports(test_results)
 
         # Generate coverage
-        self.generate_coverage()
+        self.generate_coverage(test_results)
 
         # Print summary
         self.print_summary(test_results)
