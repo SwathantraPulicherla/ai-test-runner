@@ -274,6 +274,21 @@ class AITestRunner:
         """Run the compiled tests and track which ones pass for coverage"""
         print("🧪 Running tests...")
 
+        # Clean any existing .gcda/.gcno files from previous runs
+        print("   Cleaning old coverage data...")
+        for gcda_file in self.output_dir.rglob("*.gcda"):
+            try:
+                gcda_file.unlink()
+                print(f"   Removed old coverage file: {gcda_file.name}")
+            except OSError:
+                pass
+        for gcno_file in self.output_dir.rglob("*.gcno"):
+            try:
+                gcno_file.unlink()
+                print(f"   Removed old coverage file: {gcno_file.name}")
+            except OSError:
+                pass
+
         test_results = []
         self.passed_test_executables = []  # Track passing tests for coverage
         test_executables = [exe for exe in self.output_dir.glob("*test*") 
@@ -510,21 +525,6 @@ class AITestRunner:
         coverage_source_info = self.output_dir / "coverage_source.info"
         coverage_html_dir = self.tests_dir / "coverage_reports"
 
-        # Clean any existing .gcda/.gcno files that might contain cached coverage data
-        print("   Cleaning cached coverage data...")
-        for gcda_file in self.output_dir.rglob("*.gcda"):
-            try:
-                gcda_file.unlink()
-                print(f"   Removed cached coverage file: {gcda_file.name}")
-            except OSError:
-                pass
-        for gcno_file in self.output_dir.rglob("*.gcno"):
-            try:
-                gcno_file.unlink()
-                print(f"   Removed cached coverage file: {gcno_file.name}")
-            except OSError:
-                pass
-
         # Check if we have any passing tests to generate coverage from
         if total_individual_passed == 0:
             print("   ⚠️  No passing tests found - skipping coverage generation")
@@ -543,7 +543,7 @@ class AITestRunner:
                 print("   ⚠️  Could not write minimal coverage index.html")
             return True
 
-        print(f"   Coverage will be generated from {len(self.passed_test_executables)} passing test(s)")
+        print(f"   Coverage will be generated from {total_individual_passed} passing test function(s)")
 
         # If there are no .gcda files, skip lcov capture and produce a minimal report
         gcda_files = list(self.output_dir.rglob("*.gcda"))
