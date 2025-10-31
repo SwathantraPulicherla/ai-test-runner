@@ -274,21 +274,6 @@ class AITestRunner:
         """Run the compiled tests and track which ones pass for coverage"""
         print("🧪 Running tests...")
 
-        # Clean any existing .gcda/.gcno files from previous runs
-        print("   Cleaning old coverage data...")
-        for gcda_file in self.output_dir.rglob("*.gcda"):
-            try:
-                gcda_file.unlink()
-                print(f"   Removed old coverage file: {gcda_file.name}")
-            except OSError:
-                pass
-        for gcno_file in self.output_dir.rglob("*.gcno"):
-            try:
-                gcno_file.unlink()
-                print(f"   Removed old coverage file: {gcno_file.name}")
-            except OSError:
-                pass
-
         test_results = []
         self.passed_test_executables = []  # Track passing tests for coverage
         test_executables = [exe for exe in self.output_dir.glob("*test*") 
@@ -862,6 +847,21 @@ class AITestRunner:
         self.copy_source_files()
         self.copy_test_files(compilable_tests)
         self.create_cmake_lists(compilable_tests)
+
+        # Clean any existing .gcda/.gcno files from previous runs before building
+        print("   Cleaning old coverage data...")
+        for gcda_file in self.output_dir.rglob("*.gcda"):
+            try:
+                gcda_file.unlink()
+                print(f"   Removed old coverage file: {gcda_file.name}")
+            except OSError:
+                pass
+        for gcno_file in self.output_dir.rglob("*.gcno"):
+            try:
+                gcno_file.unlink()
+                print(f"   Removed old coverage file: {gcno_file.name}")
+            except OSError:
+                pass
 
         # Build tests
         if not self.build_tests():
