@@ -634,7 +634,8 @@ class AITestRunner:
         )
 
         print(f"✅ Coverage report generated: {coverage_html_dir}")
-        print("   📊 View the full coverage report in the HTML artifact or GitHub Pages.")
+        print(f"   Raw lcov output:\n{summary_result.stdout}")
+        print("   See the full coverage report in the HTML artifact or GitHub Pages.")
         return True
 
     def _generate_coverage_gcovr(self, gcovr_path):
@@ -656,7 +657,8 @@ class AITestRunner:
         )
 
         print(f"✅ Coverage report generated: {coverage_html_dir}")
-        print("   📊 View the full coverage report in the HTML artifact or GitHub Pages.")
+        print(f"   Raw gcovr output:\n{summary_result.stdout}")
+        print("   See the full coverage report in the HTML artifact or GitHub Pages.")
         return True
 
     def print_coverage_summary_gcovr(self, gcovr_output):
@@ -689,9 +691,21 @@ class AITestRunner:
                 except (ValueError, IndexError):
                     continue
 
-        return True
+        print("-" * 60)
 
-    def print_summary(self, test_results):
+    def print_coverage_summary(self, lcov_output):
+        """Parse lcov output and print a summary table
+        
+        Coverage Summary Format:
+        - File: Source file path (relative to project root)
+        - Lines: Format is "lines_hit/lines_total" (e.g., "3/6")
+        - Coverage: Percentage of lines executed (e.g., "50.0%")
+        
+        Handles lcov --list table format:
+        Filename                |Rate     Num|Rate    Num|Rate     Num
+        ==============================================================
+        temp_converter.c        |50.0%      6| 0.0%     3|    -      0
+        """
         print("\nCOVERAGE SUMMARY")
         print("=" * 60)
         print("Format: File | Lines (hit/total) | Coverage %")
@@ -759,7 +773,7 @@ class AITestRunner:
         if total_lines > 0:
             total_coverage = (total_lines_hit / total_lines) * 100
             print(f"{'Total':<30} | {f'{total_lines_hit}/{total_lines}':>10} | {f'{total_coverage:.1f}%':>10}")
-        return True
+        print("=" * 60)
 
     def print_summary(self, test_results):
         """Print test execution summary"""
